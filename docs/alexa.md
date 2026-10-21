@@ -63,6 +63,8 @@ Com isso, o servidor só aceita pedidos vindos da sua skill.
 
 A skill já fica ativa nos Echos da mesma conta. Não precisa publicar.
 
+Ela **não aparece na busca de skills** do app Alexa, porque é particular. Para vê-la no celular, abra **Mais → Skills e Jogos → Suas Skills → aba Dev**. Não é preciso que ela apareça ali para funcionar: se o Echo responde a "Alexa, abrir diário da luísa", está tudo certo.
+
 ### 6. Rotinas para falar curto (no app Alexa do celular)
 Abra **Mais → Rotinas → +** e crie uma rotina para cada linha:
 
@@ -82,7 +84,8 @@ Em cada rotina, escolha em **De:** os Echos da casa e salve. Depois é só falar
 | "Houve um problema com a resposta da skill solicitada" | Servidor fora do ar, endpoint errado ou token errado | Abrir `https://DOMINIO` no navegador. Conferir o endpoint (passo 3) e o token do usuário "Alexa". |
 | A mesma mensagem, logo depois de definir `ALEXA_SKILL_ID` | O Skill ID copiado está diferente | Copiar de novo o Skill ID do console e fazer o redeploy. |
 | "Desculpe, não sei sobre isso" | A frase não chegou na skill | Testar no console (passo 5). Na rotina, conferir se a ação **Personalizado** começa com "peça para diário da luísa…". |
-| Funciona no console, mas não no Echo | O Echo está em outra conta ou em outro idioma | O Echo precisa estar na mesma conta Amazon e em **Português (Brasil)**. |
+| Funciona no console, mas não no Echo | O Echo está em outra conta ou em outro idioma | O Echo precisa estar na mesma conta Amazon e em **Português (Brasil)**. O mesmo e-mail pode ter duas contas Amazon separadas. Se o e-mail do console e o do app Alexa não forem a mesma conta, recrie a skill logado com a conta dos Echos. |
+| A skill não aparece no app Alexa do celular | Skill particular não entra na busca da loja | Procurar em **Mais → Skills e Jogos → Suas Skills → aba Dev**. Se não estiver lá, conferir o teste em **Development** (passo 5), o idioma **Portuguese (BR)** no console e a conta. |
 | "Salva iniciada" quando queriam terminar | Passaram mais de 15 min, ou o servidor reiniciou | Corrigir a duração da salva no app e apagar a salva extra. |
 
 ## Para a agente: conferir se a Alexa registrou
