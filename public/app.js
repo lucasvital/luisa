@@ -19,6 +19,7 @@ const S = {
   fila: ls.get('fila', []),
   salva: ls.get('salva', null),
   resumo: ls.get('cache:resumo', null),
+  eu: ls.get('cache:eu', null),
   hist: ls.get('pref:hist', 7),
   soFalhas: false,
   aba: 'esp',
@@ -65,10 +66,10 @@ async function api(method, url, body) {
 async function carregar() {
   if (!token) return render();
   try {
-    const [h, m] = await Promise.all([api('GET', '/api/hoje'), api('GET', '/api/medicacoes')]);
+    const [h, m, eu] = await Promise.all([api('GET', '/api/hoje'), api('GET', '/api/medicacoes'), api('GET', '/api/eu')]);
     if (S.fila.length) return; // chegou ação nova no meio: a próxima sincronização recarrega
-    Object.assign(S, { hoje: h, meds: m, online: true });
-    ls.set('cache:hoje', h); ls.set('cache:meds', m);
+    Object.assign(S, { hoje: h, meds: m, eu, online: true });
+    ls.set('cache:hoje', h); ls.set('cache:meds', m); ls.set('cache:eu', eu);
     S.resumoKey = null;
   } catch (e) {
     if (!e.status) S.online = false;
@@ -596,6 +597,16 @@ function telaRemedios() {
 }
 
 // ----- Relatório -----
+function cardAtalhos() {
+  const at = S.eu?.atalhos;
+  const corpo = at?.espasmo && at?.dei
+    ? `<button class="btn" data-act="instalar" data-v="espasmo">${ic('wave')} Instalar "Espasmo"</button>
+       <button class="btn" data-act="instalar" data-v="dei">${ic('check')} Instalar "Dei a dose"</button>
+       <p class="sub" style="margin:14px 0 0">O botão copia o seu código: cole quando o iPhone pedir. Depois, em <b style="color:var(--ink)">Ajustes → Acessibilidade → Toque → Toque Traseiro</b>, escolha toque duplo = Espasmo e triplo = Dei a dose.</p>`
+    : '<p class="sub" style="margin:0">Os links dos atalhos ainda não foram configurados no servidor (veja docs/iphone-atalhos.md).</p>';
+  return `<div class="card"><h3>Atalhos do iPhone</h3><p class="sub">2 toques nas costas = Espasmo · 3 toques = Dei a dose</p>${corpo}</div>`;
+}
+
 function telaRelatorio() {
   const inicioTrat = S.meds.map(m => m.inicio).sort()[0] || addDias(hojeD(), -13);
   const atalho = (n, rot) => `<button class="chip" data-act="rel-atalho" data-v="${n}">${rot}</button>`;
@@ -605,6 +616,7 @@ function telaRelatorio() {
       <div class="f"><label>Até</label><input class="in" type="date" id="r-ate" value="${hojeD()}"></div></div>
       <div class="chips" style="margin-bottom:18px">${atalho(7, '7 dias')}${atalho(14, '14 dias')}${atalho(30, '30 dias')}<button class="chip" data-act="rel-atalho" data-v="trat" data-d="${inicioTrat}">Desde o início</button></div>
       <button class="btn" data-act="rel-gerar">${ic('doc')} Gerar relatório</button></div>
+    ${cardAtalhos()}
     <div class="card"><h3>Este aparelho</h3><p class="sub">Conectado como <b style="color:var(--ink)">${esc(S.hoje?.usuario || '')}</b></p>
       <button class="btn ghost" data-act="sair">Sair deste aparelho</button></div></div>
     <div class="nota">Na tela do relatório, toque em “Salvar PDF”. No iPhone: Compartilhar → Salvar em Arquivos.</div>`;
@@ -770,6 +782,12 @@ const A = {
     location.hash = `#/imprimir?de=${de}&ate=${ate}`;
   },
   imprimir: () => print(),
+  instalar(el) {
+    // copia o código e abre o atalho compartilhado no mesmo toque (o iOS exige o gesto do usuário pros dois)
+    navigator.clipboard?.writeText(token).catch(() => {});
+    window.open(S.eu.atalhos[el.dataset.v], '_blank');
+    toast('Seu código foi copiado. Cole quando o iPhone pedir.', { sub: 'Atalhos do iPhone', icone: 'check' });
+  },
   voltar: () => (location.hash = '#/relatorio'),
   eu() {
     abrirSheet(`<h2>Olá, ${esc(S.hoje?.usuario || '')}</h2><p class="sub">Tudo que você registra aparece com o seu nome para os outros.${S.fila.length ? `<br>${S.fila.length} registro(s) esperando internet para enviar.` : ''}</p>

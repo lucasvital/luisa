@@ -54,10 +54,10 @@ CREATE TABLE IF NOT EXISTS espasmos (
   atualizado_em TEXT NOT NULL
 );`);
 
-// Primeiro boot: cria um token por pessoa (USUARIOS=Lucas,Mãe,Agente).
-if (!db.prepare('SELECT 1 FROM usuarios').get()) {
-  const ins = db.prepare('INSERT INTO usuarios (token, nome) VALUES (?, ?)');
-  for (const nome of (process.env.USUARIOS || 'Lucas,Mãe,Agente').split(',')) ins.run(crypto.randomBytes(18).toString('base64url'), nome.trim());
+// Um token por pessoa (USUARIOS=Lucas,Mãe,Agente,Alexa). Nome novo na lista ganha token no próximo boot.
+const insUsuario = db.prepare('INSERT INTO usuarios (token, nome) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM usuarios WHERE nome = ?)');
+for (const nome of (process.env.USUARIOS || 'Lucas,Mãe,Agente,Alexa').split(',').map(n => n.trim()).filter(Boolean)) {
+  insUsuario.run(crypto.randomBytes(18).toString('base64url'), nome, nome);
 }
 
 // ---------- tempo: tudo gravado em hora local sem fuso ("2026-10-21T11:23:00") ----------
@@ -148,6 +148,62 @@ function avisar(tipo, acao, dados) {
     .catch(e => console.error('webhook falhou:', e.message));
 }
 
+// ---------- atalhos (iPhone e Alexa) ----------
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+function duracao(seg, fala) {
+  const m = Math.floor(seg / 60), s = seg % 60;
+  if (!fala) return `${m}:${pad(s)}`;
+  return [m && plural(m, 'minuto', 'minutos'), (s || !m) && plural(s, 'segundo', 'segundos')].filter(Boolean).join(' e ');
+}
+function espera(min, fala) {
+  const h = Math.floor(min / 60), m = Math.floor(min % 60);
+  if (!fala) return `${h}h${pad(m)}`;
+  return [h && plural(h, 'hora', 'horas'), m && plural(m, 'minuto', 'minutos')].filter(Boolean).join(' e ') || 'menos de um minuto';
+}
+
+function atalhoEspasmo(u, fala) {
+  const agora = local(), aberta = salvaAberta.get(u.token), e = aberta && getEspasmo(aberta);
+  salvaAberta.delete(u.token);
+  if (e && minutos(agora, e.inicio) <= 15) {
+    const seg = Math.round(minutos(agora, e.inicio) * 60);
+    rotas['POST /api/espasmos']({ id: e.id, duracao_seg: seg }, u);
+    return `Salva encerrada: ${duracao(seg, fala)}. Complete a contagem no app.`;
+  }
+  const nova = rotas['POST /api/espasmos']({}, u).body;
+  salvaAberta.set(u.token, nova.id);
+  return `Salva iniciada às ${nova.inicio.slice(11, 16)}. ${fala ? 'Diga espasmo de novo' : 'Toque de novo'} quando acabar.`;
+}
+
+function atalhoDei(u, fala) {
+  const agora = local(), p = proximaDose(agora);
+  if (!p) return 'Nenhuma dose pendente agora.';
+  const falta = minutos(p.previsto, agora);
+  if (falta > 60) return `A próxima dose, ${p.nome} das ${p.previsto.slice(11)}, é só daqui a ${espera(falta, fala)}. Se deu antes, registre pelo app.`;
+  try {
+    rotas['POST /api/doses']({ medicacao_id: p.medicacao_id, previsto: p.previsto }, u);
+  } catch (e) {
+    if (e.status === 409) return `${e.message[0].toUpperCase()}${e.message.slice(1)}.`;
+    throw e;
+  }
+  const prox = proximaDose(agora);
+  return `${p.nome} das ${p.previsto.slice(11)} marcada como dada.${prox ? ` Próxima: ${prox.nome} às ${prox.previsto.slice(11)}.` : ''}`;
+}
+
+function falaProxima() {
+  const agora = local(), p = proximaDose(agora);
+  if (!p) return 'Não há dose pendente.';
+  const nome = `${p.nome}${p.dose ? `, ${p.dose},` : ''}`, falta = minutos(p.previsto, agora);
+  if (falta < 0) return `A dose de ${nome} das ${p.previsto.slice(11)} está atrasada e sem registro.`;
+  const amanha = p.previsto.startsWith(agora.slice(0, 10)) ? '' : ' de amanhã';
+  return `A próxima dose é ${nome} às ${p.previsto.slice(11)}${amanha}, daqui a ${espera(falta, true)}.`;
+}
+
+function falaResumo() {
+  const r = rotas['GET /api/hoje'](null, { nome: '' }).resumo;
+  const ultima = r.ultima_salva ? ` A última foi há ${espera(minutos(local(), r.ultima_salva), true)}.` : '';
+  return `Hoje foram ${plural(r.espasmos, 'espasmo', 'espasmos')} em ${plural(r.salvas, 'salva', 'salvas')}.${ultima} Doses: ${r.doses_dadas} de ${r.doses_previstas} registradas.`;
+}
+
 // ---------- rotas ----------
 // ponytail: salva aberta pelo atalho fica em memória; se o servidor reiniciar no meio, o próximo toque abre outra
 const salvaAberta = new Map();
@@ -159,7 +215,7 @@ R.s = Symbol('status');
 const int = (v, campo) => { const n = Number(v); if (!Number.isInteger(n) || n < 0) throw erro(400, `${campo} deve ser inteiro >= 0`); return n; };
 
 const rotas = {
-  'GET /api/eu': (_, u) => ({ nome: u.nome }),
+  'GET /api/eu': (_, u) => ({ nome: u.nome, atalhos: { espasmo: process.env.ATALHO_ESPASMO_URL || null, dei: process.env.ATALHO_DEI_URL || null } }),
 
   'GET /api/hoje'(_, u) {
     const agora = local(), dia = agora.slice(0, 10);
@@ -280,34 +336,25 @@ const rotas = {
   // Atalhos do iPhone (Toque Traseiro / Siri): POST /api/atalho/espasmo e /api/atalho/dei.
   // Respondem texto curto, que o atalho mostra como notificação.
   'POST /api/atalho/:id'(_, u, acao) {
-    const agora = local();
-    if (acao === 'espasmo') {
-      const aberta = salvaAberta.get(u.token), e = aberta && getEspasmo(aberta);
-      salvaAberta.delete(u.token);
-      if (e && minutos(agora, e.inicio) <= 15) {
-        const seg = Math.round(minutos(agora, e.inicio) * 60);
-        rotas['POST /api/espasmos']({ id: e.id, duracao_seg: seg }, u);
-        return `Salva encerrada: ${Math.floor(seg / 60)}:${pad(seg % 60)}. Complete a contagem no app.`;
-      }
-      const nova = rotas['POST /api/espasmos']({}, u).body;
-      salvaAberta.set(u.token, nova.id);
-      return `Salva iniciada às ${nova.inicio.slice(11, 16)}. Toque de novo quando acabar.`;
-    }
-    if (acao === 'dei') {
-      const p = proximaDose(agora);
-      if (!p) return 'Nenhuma dose pendente agora.';
-      const falta = minutos(p.previsto, agora);
-      if (falta > 60) return `A próxima dose (${p.nome} ${p.previsto.slice(11)}) é só daqui a ${Math.floor(falta / 60)}h${pad(Math.round(falta % 60))}. Se deu antes, registre pelo app.`;
-      try {
-        rotas['POST /api/doses']({ medicacao_id: p.medicacao_id, previsto: p.previsto }, u);
-      } catch (e) {
-        if (e.status === 409) return `${e.message[0].toUpperCase()}${e.message.slice(1)}.`;
-        throw e;
-      }
-      const prox = proximaDose(agora);
-      return `${p.nome} das ${p.previsto.slice(11)} marcada como dada.${prox ? ` Próxima: ${prox.nome} às ${prox.previsto.slice(11)}.` : ''}`;
-    }
+    if (acao === 'espasmo') return atalhoEspasmo(u);
+    if (acao === 'dei') return atalhoDei(u);
     throw erro(404, 'atalho não existe: use espasmo ou dei');
+  },
+
+  // Skill particular da Alexa (docs/alexa.md). O endpoint leva o token do usuário "Alexa" no caminho.
+  // ponytail: sem checar a assinatura da Amazon (skill de desenvolvimento, não publicada); o token no caminho
+  // e o ALEXA_SKILL_ID protegem. Se um dia publicar a skill, implementar a validação do certificado.
+  'POST /api/alexa/:id'(b, u) {
+    const app = b.session?.application?.applicationId || b.context?.System?.application?.applicationId;
+    if (process.env.ALEXA_SKILL_ID && app !== process.env.ALEXA_SKILL_ID) throw erro(403, 'skill desconhecida');
+    const req = b.request || {}, nome = req.intent?.name;
+    const fala = (texto, fim = true) => ({ version: '1.0', response: { outputSpeech: { type: 'PlainText', text: texto }, shouldEndSession: fim } });
+    const AJUDA = 'Você pode dizer: espasmo, dei o remédio, qual a próxima dose, ou quantos espasmos hoje.';
+    if (req.type === 'SessionEndedRequest') return { version: '1.0', response: {} };
+    if (req.type === 'LaunchRequest' || nome === 'AMAZON.HelpIntent') return fala(`Diário da Luísa. ${AJUDA}`, false);
+    if (nome === 'AMAZON.FallbackIntent') return fala(`Não entendi. ${AJUDA}`, false);
+    const intents = { EspasmoIntent: () => atalhoEspasmo(u, true), DeiIntent: () => atalhoDei(u, true), ProximaDoseIntent: falaProxima, ResumoHojeIntent: falaResumo };
+    return fala(intents[nome] ? intents[nome]() : 'Até logo.');
   },
 
   // polling do agente: o que mudou desde um instante
@@ -362,7 +409,7 @@ const server = http.createServer(async (req, res) => {
       return enviarArquivo(req, res, file, /\.(png|svg)$/.test(file) ? 'max-age=86400' : 'no-cache');
     }
 
-    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || url.searchParams.get('t');
+    const token = p.match(/^\/api\/alexa\/([\w-]+)$/)?.[1] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || url.searchParams.get('t');
     const u = token && db.prepare('SELECT * FROM usuarios WHERE token = ?').get(token);
     if (!u) return enviarJson(res, 401, { erro: 'token inválido' });
 

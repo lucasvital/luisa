@@ -1,0 +1,76 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "diario da luisa",
+      "intents": [
+        {
+          "name": "EspasmoIntent",
+          "slots": [],
+          "samples": [
+            "espasmo",
+            "espasmos",
+            "registrar espasmo",
+            "registra espasmo",
+            "teve espasmo",
+            "começou espasmo",
+            "começou a salva",
+            "começou uma salva",
+            "acabou",
+            "terminou",
+            "acabou a salva",
+            "terminou a salva",
+            "fim da salva",
+            "parou"
+          ]
+        },
+        {
+          "name": "DeiIntent",
+          "slots": [],
+          "samples": [
+            "dei o remédio",
+            "dei a dose",
+            "dei o remedio",
+            "já dei o remédio",
+            "já dei a dose",
+            "registrar dose",
+            "registra a dose",
+            "marca a dose",
+            "marcar remédio",
+            "remédio dado"
+          ]
+        },
+        {
+          "name": "ProximaDoseIntent",
+          "slots": [],
+          "samples": [
+            "qual a próxima dose",
+            "próxima dose",
+            "qual o próximo remédio",
+            "quando é o próximo remédio",
+            "que horas é o próximo remédio",
+            "que horas é a próxima dose",
+            "quando é a próxima dose"
+          ]
+        },
+        {
+          "name": "ResumoHojeIntent",
+          "slots": [],
+          "samples": [
+            "quantos espasmos hoje",
+            "quantos espasmos ela teve hoje",
+            "quantas salvas hoje",
+            "como foi hoje",
+            "resumo de hoje",
+            "resumo do dia"
+          ]
+        },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        { "name": "AMAZON.FallbackIntent", "samples": [] }
+      ],
+      "types": []
+    }
+  }
+}

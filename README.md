@@ -16,10 +16,12 @@ No primeiro boot, o servidor cria um token por pessoa e mostra os links de acess
 | `PUBLIC_URL` | `http://localhost:PORT` | base dos links impressos no boot |
 | `PORT` | `3000` | |
 | `DATA_DIR` | `./data` | banco (`luisa.db`) e vídeos |
-| `USUARIOS` | `Lucas,Mãe,Agente` | nomes criados no primeiro boot |
+| `USUARIOS` | `Lucas,Mãe,Agente,Alexa` | um token por nome; nome novo na lista ganha token no próximo boot |
 | `TZ` | `America/Sao_Paulo` | todas as horas são gravadas no horário local |
 | `WEBHOOK_URL` | (vazio) | se definido, recebe um POST a cada registro |
 | `WEBHOOK_TOKEN` | (vazio) | vai como `Authorization: Bearer` no webhook |
+| `ALEXA_SKILL_ID` | (vazio) | se definido, só aceita pedidos da sua skill ([docs/alexa.md](docs/alexa.md)) |
+| `ATALHO_ESPASMO_URL` / `ATALHO_DEI_URL` | (vazio) | links do iCloud dos atalhos; liga os botões "Instalar no iPhone" do app |
 
 Na VPS (Coolify, Portainer ou `docker run`):
 
@@ -37,6 +39,10 @@ O app precisa de HTTPS para instalar no celular e funcionar offline. Coloque atr
 - **3 toques = Dei a dose:** registra a dose do momento. Avisa se ela já foi dada e recusa se a próxima for daqui a mais de 1h.
 
 O passo a passo, as respostas e a solução de problemas estão em **[docs/iphone-atalhos.md](docs/iphone-atalhos.md)**. Esse guia foi escrito para a agente conseguir ajudar na configuração.
+
+## Alexa
+
+É uma skill particular: "Alexa, espasmo", "Alexa, dei o remédio", "Alexa, próxima dose", "Alexa, espasmos hoje". A configuração leva uns 15 minutos e está em **[docs/alexa.md](docs/alexa.md)**.
 
 ## API (para a agente)
 

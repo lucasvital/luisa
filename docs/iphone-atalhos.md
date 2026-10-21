@@ -31,7 +31,37 @@ POST https://DOMINIO/api/atalho/dei?t=TOKEN
 - Não têm corpo. O token vai na URL.
 - A resposta é **texto puro** (`text/plain`), pronto para virar notificação.
 
-## Passo a passo no iPhone (uma vez por aparelho)
+## Instalação em 1 toque (recomendado)
+
+No app, em **Relatório → Atalhos do iPhone**, há os botões **Instalar "Espasmo"** e **Instalar "Dei a dose"**. Cada botão faz duas coisas:
+1. Copia o código da pessoa.
+2. Abre o atalho pronto no iPhone.
+
+A pessoa toca em **Adicionar Atalho**, cola o código quando o iPhone pedir e liga o Toque Traseiro (veja "Ligar o gesto nas costas", mais abaixo).
+
+Para os botões aparecerem, o Lucas precisa criar os atalhos **compartilháveis uma única vez** e colocar os links no servidor.
+
+### Criar os atalhos compartilháveis (só o Lucas, uma vez)
+O iPhone não aceita atalho gerado por site: ele precisa sair de um iPhone ou de um Mac. O código de cada pessoa entra por uma **pergunta de importação**.
+
+1. No app **Atalhos**, toque em **+** e adicione a ação **Texto**. Escreva `COLE_SEU_CODIGO`.
+   - ⚠️ **Não** coloque o seu código de verdade: o texto vai junto no link compartilhado.
+2. Adicione a ação **Obter Conteúdo do URL**.
+   - No URL, escreva `https://DOMINIO/api/atalho/espasmo?t=` e, logo depois, insira a variável **Texto** (aparece acima do teclado).
+   - Abra as opções pela setinha (›) e mude **Método** para **POST**.
+3. Adicione **Mostrar Notificação** com o texto **Conteúdo do URL**.
+4. Dê o nome **Espasmo**.
+5. Configure a pergunta de importação:
+   - Abra os detalhes do atalho: o **ⓘ** embaixo, ou toque no nome dele no topo.
+   - Procure **Configuração** / **Perguntas de Importação** e adicione uma pergunta para o campo da ação **Texto**.
+   - Pergunta sugerida: "Cole o seu código de acesso (o app copiou para você)".
+6. Toque em **Compartilhar → Copiar Link do iCloud**.
+7. Repita tudo para **Dei a dose**, com `.../api/atalho/dei?t=`.
+8. No servidor, crie as variáveis `ATALHO_ESPASMO_URL` e `ATALHO_DEI_URL` com os dois links do iCloud e faça o redeploy. Os botões aparecem no app.
+
+Se o domínio do servidor mudar, refaça os links.
+
+## Passo a passo manual (alternativa, uma vez por aparelho)
 
 ### Atalho "Espasmo"
 1. Abra o app **Atalhos** e toque em **+**, no canto de cima.
