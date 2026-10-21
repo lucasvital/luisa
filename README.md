@@ -33,21 +33,10 @@ O app precisa de HTTPS para instalar no celular e funcionar offline. Coloque atr
 
 ## Atalhos do iPhone (toque nas costas do celular)
 
-São duas rotas que respondem com uma frase curta, que o iPhone mostra como notificação:
+- **2 toques nas costas = Espasmo:** o primeiro começa a salva e o segundo termina e grava a duração.
+- **3 toques = Dei a dose:** registra a dose do momento. Avisa se ela já foi dada e recusa se a próxima for daqui a mais de 1h.
 
-- `POST /api/atalho/espasmo`: o primeiro toque começa a salva e o segundo (em até 15 min) termina e grava a duração. A contagem você completa depois no app.
-- `POST /api/atalho/dei`: registra a dose do momento. Se já foi dada, avisa quem deu. Se a próxima for daqui a mais de 1h, não registra.
-
-Monte assim, uma vez em cada iPhone, cada pessoa com o **seu** token:
-
-1. No app **Atalhos**, toque em **+** e escolha a ação **Obter Conteúdo do URL**.
-2. URL: `https://SEU-SERVIDOR/api/atalho/espasmo?t=SEU_TOKEN`. Toque na setinha e mude **Método** para **POST**.
-3. Adicione a ação **Mostrar Notificação** e deixe o texto como **Conteúdo do URL**.
-4. Dê o nome **Espasmo**.
-5. Repita os passos com `/api/atalho/dei` e o nome **Dei a dose**.
-6. Em **Ajustes → Acessibilidade → Toque → Toque Traseiro**, ligue **Toque Duplo → Espasmo** e **Toque Triplo → Dei a dose**.
-
-O nome do atalho também funciona com a Siri ("E aí Siri, espasmo") e aparece no Apple Watch.
+O passo a passo, as respostas e a solução de problemas estão em **[docs/iphone-atalhos.md](docs/iphone-atalhos.md)**. Esse guia foi escrito para a agente conseguir ajudar na configuração.
 
 ## API (para a agente)
 
