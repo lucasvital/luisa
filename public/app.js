@@ -816,7 +816,7 @@ document.addEventListener('change', e => {
 addEventListener('hashchange', () => { scrollTo(0, 0); render(); });
 addEventListener('online', sincronizar);
 addEventListener('offline', () => { S.online = false; render(); });
-// Ao vivo: o servidor avisa quando alguém registra (atalho do iPhone, Alexa, agente, outro celular)
+// Ao vivo: o servidor avisa quando alguém registra (atalho do iPhone, agente, outro celular)
 // e o app recarrega na hora, sem F5. Se a conexão cair, o próprio EventSource reconecta.
 let aoVivo, recargaT;
 function ouvirAoVivo() {

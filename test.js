@@ -6,8 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'luisa-'));
-process.env.USUARIOS = 'Lucas,Mãe,Alexa';
-process.env.ALEXA_SKILL_ID = 'amzn1.ask.skill.teste';
+process.env.USUARIOS = 'Lucas,Mãe';
 const { server, db } = require('./server');
 
 test('fluxo de doses e espasmos', async t => {
@@ -70,16 +69,4 @@ test('fluxo de doses e espasmos', async t => {
   assert.match(await atalho('espasmo'), /^Salva iniciada/);
   assert.match(await atalho('espasmo'), /^Salva encerrada: 0:0\d/);
   assert.match(await atalho('dei'), /dose|dada/i);
-
-  // skill da Alexa: token no caminho, registra como "Alexa", fala a duração por extenso
-  const alexa = async (intent, app = 'amzn1.ask.skill.teste') => {
-    const r = await fetch(`${base}/api/alexa/${tok('Alexa')}`, { method: 'POST', body: JSON.stringify({ session: { application: { applicationId: app } }, request: intent ? { type: 'IntentRequest', intent: { name: intent } } : { type: 'LaunchRequest' } }) });
-    return r.status === 200 ? (await r.json()).response : r.status;
-  };
-  assert.equal((await alexa()).shouldEndSession, false);
-  assert.match((await alexa('EspasmoIntent')).outputSpeech.text, /^Salva iniciada/);
-  assert.match((await alexa('EspasmoIntent')).outputSpeech.text, /^Salva encerrada: \d+ segundos?\./);
-  assert.match((await alexa('ResumoHojeIntent')).outputSpeech.text, /^Hoje foram/);
-  assert.equal(await alexa('EspasmoIntent', 'amzn1.ask.skill.outra'), 403);
-  assert.equal(db.prepare("SELECT count(*) n FROM espasmos WHERE quem = 'Alexa'").get().n, 1);
 });
