@@ -58,6 +58,13 @@ test('fluxo de doses e espasmos', async t => {
   assert.equal((await call(lucas, 'DELETE', `/api/medicacoes/${med.body.id}`)).status, 409, 'não apaga remédio com doses');
   assert.equal((await call(lucas, 'GET', '/api/eventos?desde=2000-01-01T00:00')).body.espasmos.length, 1);
 
+  // ao vivo: o app aberto recebe o aviso quando alguém registra por fora
+  const vivo = (await fetch(`${base}/api/ao-vivo?t=${lucas}`)).body.getReader();
+  await vivo.read(); // "retry:"
+  await call(mae, 'POST', '/api/espasmos', { total: 3 });
+  assert.match(new TextDecoder().decode((await vivo.read()).value), /"tipo":"espasmo"/);
+  await vivo.cancel();
+
   // atalhos do iPhone: token na URL, resposta em texto
   const atalho = async a => (await fetch(`${base}/api/atalho/${a}?t=${mae}`, { method: 'POST' })).text();
   assert.match(await atalho('espasmo'), /^Salva iniciada/);

@@ -16,7 +16,7 @@ body { font-family: 'Nunito', system-ui, sans-serif; background: var(--indigo); 
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
 input, textarea { font: inherit; color: inherit; }
 svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-svg.f { width: 24px; height: 24px; fill: currentColor; flex: none; }
+svg.ico { width: 24px; height: 24px; fill: currentColor; flex: none; }
 #app { max-width: 480px; margin: 0 auto; min-height: 100dvh; padding: calc(10px + var(--safe-t)) 0 calc(118px + var(--safe-b)); position: relative; }
 .pad { padding: 0 20px; }
 
@@ -82,7 +82,7 @@ svg.f { width: 24px; height: 24px; fill: currentColor; flex: none; }
 .lista { padding: 0 20px; display: grid; gap: 10px; }
 .nt { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: #fff; color: var(--ink); border-radius: 24px; padding: 14px 16px; box-shadow: 0 16px 30px -22px rgba(20, 22, 70, .7); }
 .nt .ic { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; color: var(--indigo); background: var(--lav); flex: none; }
-.nt .ic svg.f { width: 30px; height: 30px; }
+.nt .ic svg.ico { width: 32px; height: 32px; }
 .nt .ic.y { background: #FFF8DC; --ic1: var(--navy); --ic2: var(--yellow); }
 .nt .tx { flex: 1; min-width: 0; line-height: 1.25; }
 .nt .tx small { display: block; font-size: 12.5px; font-weight: 700; color: var(--muted); }

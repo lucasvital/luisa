@@ -353,7 +353,7 @@ async function salvarMed() {
 // ---------- telas (componentes do Elli App) ----------
 const rota = () => (location.hash.replace(/^#\/?/, '').split('?')[0] || 'hoje');
 const whoCls = n => (n === S.hoje?.usuario ? '' : /agente/i.test(n) ? 'c2' : 'c1');
-const fi = id => `<svg class="f"><use href="#${id}"/></svg>`;
+const fi = id => `<svg class="ico"><use href="#${id}"/></svg>`;
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 const LETRA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
@@ -416,7 +416,7 @@ function detalheSalva(s) {
 }
 
 function ntSalva(s, comDia) {
-  return `<button class="nt" data-act="salva" data-id="${esc(s.id)}"><span class="ic y"><svg class="f"><use href="#t-wave"/></svg></span>
+  return `<button class="nt" data-act="salva" data-id="${esc(s.id)}"><span class="ic y"><svg class="ico"><use href="#t-wave"/></svg></span>
     <span class="tx"><small>Salva ${comDia ? `${dsem(s.inicio.slice(0, 10))} ${dm(s.inicio.slice(0, 10))} ` : ''}às ${hm(s.inicio)}</small>
     <b>${plural(s.total, 'espasmo', 'espasmos')}${s.duracao_seg != null ? ` · ${dur(s.duracao_seg)}` : ''}${s.video ? `<svg class="i vid"><use href="#i-cam"/></svg>` : ''}</b>
     <em>${esc(detalheSalva(s)) || 'toque para completar'}</em></span><span class="who ${whoCls(s.quem)}">${esc(s.quem)}</span></button>`;
@@ -424,7 +424,7 @@ function ntSalva(s, comDia) {
 
 function ntDose(d) {
   const r = d.dose_registrada, atraso = d.previsto ? minDe(d.previsto, r.dada_em) : 0;
-  return `<button class="nt" data-act="dose-info" data-id="${esc(r.id)}"><span class="ic"><svg class="f"><use href="#t-pills"/></svg></span>
+  return `<button class="nt" data-act="dose-info" data-id="${esc(r.id)}"><span class="ic"><svg class="ico"><use href="#t-pills"/></svg></span>
     <span class="tx"><small>Medicação às ${hm(r.dada_em)}</small><b>${esc(d.nome)}${d.dose ? ` · ${esc(d.dose)}` : ''}</b>
     <em>${d.previsto ? `prevista ${hm(d.previsto)}${atraso > 30 ? ` · ${atraso} min depois` : ''}` : 'dose extra'}</em></span><span class="who ${whoCls(r.quem)}">${esc(r.quem)}</span></button>`;
 }
@@ -554,7 +554,7 @@ function cardAdesao(r) {
 function ntDoseHist(d) {
   const r = d.dose_registrada, dia = (d.previsto || r.dada_em).slice(0, 10);
   const st = { dada: ['c-a', 'no horário'], dada_atrasada: ['c-b', 'atrasada'], atrasada: ['c-r', 'não registrada'], extra: ['', 'extra'] }[d.status];
-  return `<div class="nt"><span class="ic"><svg class="f"><use href="#t-pills"/></svg></span>
+  return `<div class="nt"><span class="ic"><svg class="ico"><use href="#t-pills"/></svg></span>
     <span class="tx"><small>${dsem(dia)} ${dm(dia)}${d.previsto ? ` · prevista ${hm(d.previsto)}` : ''}</small><b>${esc(d.nome)}${d.dose ? ` · ${esc(d.dose)}` : ''}</b>
     <em>${r ? `dada ${hm(r.dada_em)} por ${esc(r.quem)}` : 'sem registro de quem deu'}</em></span><span class="chip ${st[0]}">${st[1]}</span></div>`;
 }
@@ -681,6 +681,7 @@ function render() {
 
 function sair() {
   token = '';
+  aoVivo?.close();
   ['token', 'cache:hoje', 'cache:meds', 'cache:resumo', 'fila', 'salva'].forEach(k => ls.set(k, null));
   Object.assign(S, { hoje: null, meds: [], fila: [], salva: null, resumo: null });
   fecharSheet(); renderSalva(); render();
@@ -797,7 +798,7 @@ const A = {
   async entrar() {
     const v = $('#tk').value.trim();
     token = (v.match(/[?&]t=([^&#\s]+)/) || [, v])[1];
-    try { await api('GET', '/api/eu'); ls.set('token', token); carregar(); }
+    try { await api('GET', '/api/eu'); ls.set('token', token); carregar(); ouvirAoVivo(); }
     catch (e) { token = ''; toast(e.status ? 'Esse acesso não vale' : 'Sem conexão com o servidor', { erro: true }); }
   },
 };
@@ -815,16 +816,32 @@ document.addEventListener('change', e => {
 addEventListener('hashchange', () => { scrollTo(0, 0); render(); });
 addEventListener('online', sincronizar);
 addEventListener('offline', () => { S.online = false; render(); });
-document.addEventListener('visibilitychange', () => {
+// Ao vivo: o servidor avisa quando alguém registra (atalho do iPhone, Alexa, agente, outro celular)
+// e o app recarrega na hora, sem F5. Se a conexão cair, o próprio EventSource reconecta.
+let aoVivo, recargaT;
+function ouvirAoVivo() {
+  if (!token || (aoVivo && aoVivo.readyState !== EventSource.CLOSED)) return;
+  aoVivo = new EventSource(`/api/ao-vivo?t=${encodeURIComponent(token)}`);
+  aoVivo.onmessage = () => {
+    clearTimeout(recargaT);
+    recargaT = setTimeout(() => (S.fila.length ? sincronizar() : carregar()), 300); // junta avisos em rajada
+  };
+}
+const voltou = () => {
   if (document.hidden) return;
   if (S.salva) manterTela(true);
+  ouvirAoVivo();
   sincronizar();
-});
+};
+document.addEventListener('visibilitychange', voltou);
+addEventListener('focus', voltou);
+addEventListener('pageshow', voltou); // iOS volta do segundo plano às vezes só com pageshow
 setInterval(tickSalva, 250);
 setInterval(() => rota() === 'hoje' && render(), 30000);
-setInterval(() => !document.hidden && sincronizar(), 60000); // o que a outra pessoa registrou aparece sozinho
+setInterval(() => !document.hidden && sincronizar(), 60000); // reserva, caso o ao vivo esteja fora
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 render();
 if (S.salva) iniciarSalva();
 sincronizar();
+ouvirAoVivo();

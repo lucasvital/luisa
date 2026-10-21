@@ -139,8 +139,10 @@ function casarSlot(med, dadaEm) {
   return cands[0]?.previsto || null;
 }
 
-// ---------- webhook (opcional) pro agente ----------
+// ---------- avisos: app aberto (ao vivo) + webhook opcional pro agente ----------
+const aoVivo = new Set(); // respostas abertas de GET /api/ao-vivo (EventSource no app)
 function avisar(tipo, acao, dados) {
+  for (const res of aoVivo) res.write(`data: ${JSON.stringify({ tipo, acao })}\n\n`);
   if (!process.env.WEBHOOK_URL) return;
   const headers = { 'Content-Type': 'application/json' };
   if (process.env.WEBHOOK_TOKEN) headers.Authorization = `Bearer ${process.env.WEBHOOK_TOKEN}`;
@@ -247,12 +249,14 @@ const rotas = {
     const id = cur
       ? (db.prepare('UPDATE medicacoes SET nome=:nome, dose=:dose, horarios=:horarios, inicio=:inicio, fim=:fim, obs=:obs WHERE id=:id').run({ ...v, id: cur.id }), cur.id)
       : Number(db.prepare('INSERT INTO medicacoes (nome, dose, horarios, inicio, fim, obs) VALUES (:nome, :dose, :horarios, :inicio, :fim, :obs)').run(v).lastInsertRowid);
+    avisar('medicacao', cur ? 'atualizada' : 'criada', getMed(id));
     return R(cur ? 200 : 201, getMed(id));
   },
 
   'DELETE /api/medicacoes/:id'(_, __, id) {
     try { db.prepare('DELETE FROM medicacoes WHERE id = ?').run(id); }
     catch { throw erro(409, 'essa medicação já tem doses registradas: em vez de apagar, preencha a data de fim'); }
+    avisar('medicacao', 'removida', { id: +id });
     return R(204);
   },
 
@@ -412,6 +416,15 @@ const server = http.createServer(async (req, res) => {
     const token = p.match(/^\/api\/alexa\/([\w-]+)$/)?.[1] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || url.searchParams.get('t');
     const u = token && db.prepare('SELECT * FROM usuarios WHERE token = ?').get(token);
     if (!u) return enviarJson(res, 401, { erro: 'token inválido' });
+
+    // app aberto escuta aqui e recarrega na hora quando alguém registra (atalho, Alexa, agente, outro celular)
+    if (p === '/api/ao-vivo') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+      res.write('retry: 3000\n\n');
+      aoVivo.add(res);
+      const ping = setInterval(() => res.write(': ping\n\n'), 25000); // proxies derrubam conexão parada
+      return req.on('close', () => { clearInterval(ping); aoVivo.delete(res); });
+    }
 
     let m;
     if ((m = p.match(/^\/api\/videos\/([\w-]+\.\w+)$/)) && req.method === 'GET') return enviarArquivo(req, res, path.join(DATA, 'videos', m[1]), 'private, max-age=86400');

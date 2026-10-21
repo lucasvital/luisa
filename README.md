@@ -59,9 +59,10 @@ Todas as chamadas levam `Authorization: Bearer <token da Agente>`. As horas acei
 | `DELETE /api/espasmos/:id` | apaga a salva |
 | `GET /api/resumo?de=2026-10-19&ate=2026-10-21` | por dia: espasmos, intensidades, salvas, doses previstas, dadas, atrasadas e não registradas. Traz também as listas completas |
 | `GET /api/eventos?desde=2026-10-21T08:00` | o que foi registrado ou alterado desde um instante (para polling) |
+| `GET /api/ao-vivo` | fluxo ao vivo (Server-Sent Events): uma linha `data: {"tipo","acao"}` a cada registro. É o que o app usa para atualizar na hora |
 
 **Dose duplicada:** se a dose daquele horário já foi registrada, o `POST /api/doses` devolve **409** com quem deu e quando. A mensagem é algo como `essa dose (Prednisolona 10:15) já foi dada por Mãe às 10:20`, e o JSON traz a `dose` existente. A agente deve repassar isso em vez de registrar de novo.
 
-**Webhook:** quando `WEBHOOK_URL` está definido, cada registro gera um `POST` com `{ "tipo": "dose" | "espasmo", "acao": "criada" | "criado" | "atualizado" | "removida" | "removido" | "video", "dados": {...} }`. Assim, se a mãe marcou no app, a agente fica sabendo e não cobra.
+**Webhook:** quando `WEBHOOK_URL` está definido, cada registro gera um `POST` com `{ "tipo": "dose" | "espasmo" | "medicacao", "acao": "criada" | "criado" | "atualizada" | "atualizado" | "removida" | "removido" | "video", "dados": {...} }`. Assim, se a mãe marcou no app, a agente fica sabendo e não cobra.
 
 O app só registra o que foi prescrito. Quem muda dose é o médico. Desmame é uma nova fase do remédio, com outra dose, criada a partir de uma data.
