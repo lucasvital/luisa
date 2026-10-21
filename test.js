@@ -56,4 +56,10 @@ test('fluxo de doses e espasmos', async t => {
 
   assert.equal((await call(lucas, 'DELETE', `/api/medicacoes/${med.body.id}`)).status, 409, 'não apaga remédio com doses');
   assert.equal((await call(lucas, 'GET', '/api/eventos?desde=2000-01-01T00:00')).body.espasmos.length, 1);
+
+  // atalhos do iPhone: token na URL, resposta em texto
+  const atalho = async a => (await fetch(`${base}/api/atalho/${a}?t=${mae}`, { method: 'POST' })).text();
+  assert.match(await atalho('espasmo'), /^Salva iniciada/);
+  assert.match(await atalho('espasmo'), /^Salva encerrada: 0:0\d/);
+  assert.match(await atalho('dei'), /dose|dada/i);
 });

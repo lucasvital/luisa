@@ -122,6 +122,14 @@ function dosesDoPeriodo(de, ate, agora = local()) {
 
 // Casa com o horário mais próximo MESMO se já foi dado: aí o POST devolve 409 em vez de
 // empurrar a dose repetida pro próximo horário livre (isso esconderia uma dose dobrada).
+// a dose mais urgente: atrasada há menos de 3h, senão a próxima (olha amanhã se hoje acabou)
+function proximaDose(agora = local()) {
+  const dia = agora.slice(0, 10), doses = dosesDoPeriodo(dia, dia, agora);
+  return doses.find(d => d.status === 'atrasada' && minutos(agora, d.previsto) <= JANELA_MIN)
+    || doses.find(d => d.status === 'pendente')
+    || dosesDoPeriodo(addDias(dia, 1), addDias(dia, 1), agora).find(d => d.status === 'pendente' || d.status === 'atrasada') || null;
+}
+
 function casarSlot(med, dadaEm) {
   const dia = dadaEm.slice(0, 10);
   const cands = [addDias(dia, -1), dia, addDias(dia, 1)]
@@ -141,6 +149,8 @@ function avisar(tipo, acao, dados) {
 }
 
 // ---------- rotas ----------
+// ponytail: salva aberta pelo atalho fica em memória; se o servidor reiniciar no meio, o próximo toque abre outra
+const salvaAberta = new Map();
 const getEspasmo = id => db.prepare('SELECT * FROM espasmos WHERE id = ?').get(id);
 const getDose = id => db.prepare('SELECT * FROM doses WHERE id = ?').get(id);
 // resposta com status diferente de 200 (lista vazia/array continua sendo corpo normal)
@@ -154,11 +164,7 @@ const rotas = {
   'GET /api/hoje'(_, u) {
     const agora = local(), dia = agora.slice(0, 10);
     const doses = dosesDoPeriodo(dia, dia, agora);
-    const pend = d => d.status === 'pendente' || d.status === 'atrasada';
-    // a mais urgente: atrasada há menos de 3h, senão a próxima (olha amanhã se hoje acabou)
-    const proxima = doses.find(d => d.status === 'atrasada' && minutos(agora, d.previsto) <= JANELA_MIN)
-      || doses.find(d => d.status === 'pendente')
-      || dosesDoPeriodo(addDias(dia, 1), addDias(dia, 1), agora).find(pend) || null;
+    const proxima = proximaDose(agora);
     const salvas = db.prepare('SELECT * FROM espasmos WHERE substr(inicio, 1, 10) = ? ORDER BY inicio').all(dia);
     return {
       agora, dia, usuario: u.nome, doses, proxima, salvas,
@@ -271,6 +277,39 @@ const rotas = {
     return { de, ate, dias, salvas, doses, medicacoes };
   },
 
+  // Atalhos do iPhone (Toque Traseiro / Siri): POST /api/atalho/espasmo e /api/atalho/dei.
+  // Respondem texto curto, que o atalho mostra como notificação.
+  'POST /api/atalho/:id'(_, u, acao) {
+    const agora = local();
+    if (acao === 'espasmo') {
+      const aberta = salvaAberta.get(u.token), e = aberta && getEspasmo(aberta);
+      salvaAberta.delete(u.token);
+      if (e && minutos(agora, e.inicio) <= 15) {
+        const seg = Math.round(minutos(agora, e.inicio) * 60);
+        rotas['POST /api/espasmos']({ id: e.id, duracao_seg: seg }, u);
+        return `Salva encerrada: ${Math.floor(seg / 60)}:${pad(seg % 60)}. Complete a contagem no app.`;
+      }
+      const nova = rotas['POST /api/espasmos']({}, u).body;
+      salvaAberta.set(u.token, nova.id);
+      return `Salva iniciada às ${nova.inicio.slice(11, 16)}. Toque de novo quando acabar.`;
+    }
+    if (acao === 'dei') {
+      const p = proximaDose(agora);
+      if (!p) return 'Nenhuma dose pendente agora.';
+      const falta = minutos(p.previsto, agora);
+      if (falta > 60) return `A próxima dose (${p.nome} ${p.previsto.slice(11)}) é só daqui a ${Math.floor(falta / 60)}h${pad(Math.round(falta % 60))}. Se deu antes, registre pelo app.`;
+      try {
+        rotas['POST /api/doses']({ medicacao_id: p.medicacao_id, previsto: p.previsto }, u);
+      } catch (e) {
+        if (e.status === 409) return `${e.message[0].toUpperCase()}${e.message.slice(1)}.`;
+        throw e;
+      }
+      const prox = proximaDose(agora);
+      return `${p.nome} das ${p.previsto.slice(11)} marcada como dada.${prox ? ` Próxima: ${prox.nome} às ${prox.previsto.slice(11)}.` : ''}`;
+    }
+    throw erro(404, 'atalho não existe: use espasmo ou dei');
+  },
+
   // polling do agente: o que mudou desde um instante
   'GET /api/eventos'(q) {
     const desde = toLocal(q.get('desde'), 'desde') || `${hoje()}T00:00:00`;
@@ -349,6 +388,10 @@ const server = http.createServer(async (req, res) => {
     if (!rota) return enviarJson(res, 404, { erro: 'rota não existe' });
     const entrada = req.method === 'GET' ? url.searchParams : await lerJson(req);
     const out = await rota(entrada, u, id);
+    if (typeof out === 'string') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(out);
+    }
     return out?.[R.s] ? enviarJson(res, out[R.s], out.body) : enviarJson(res, 200, out);
   } catch (e) {
     if (!e.status) console.error(e);
