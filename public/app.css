@@ -126,6 +126,11 @@ svg.ico { width: 24px; height: 24px; fill: currentColor; flex: none; }
 .donut { width: 224px; height: 224px; margin: 4px auto 16px; display: block; }
 .donut .n { font-size: 36px; font-weight: 900; fill: var(--ink-2); }
 .donut .u { font-size: 13px; font-weight: 800; fill: var(--muted); }
+.kv > div { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; padding: 12px 0; border-top: 1px solid var(--lav); }
+.kv > div:first-child { border-top: 0; padding-top: 2px; }
+.kv span { font-size: 14.5px; font-weight: 900; color: var(--ink); }
+.kv small { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+.kv b { font-size: 17px; font-weight: 900; color: var(--ink-2); white-space: nowrap; }
 .linha { width: 100%; height: auto; display: block; margin-top: 6px; overflow: visible; }
 .linha text { font-family: 'Nunito', sans-serif; }
 .mk-l { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 800; color: var(--ink); margin-top: 8px; }
@@ -261,6 +266,10 @@ video.vd { width: 100%; border-radius: 18px; background: #000; margin-bottom: 10
 .rel td { padding: 7px 6px; border-bottom: 1px solid var(--lav); vertical-align: top; }
 .rel tr.a td { color: var(--alert); }
 .rel .graf { border: 2px solid var(--lav); border-radius: 22px; padding: 14px; }
+.rel .pd { margin-bottom: 14px; }
+.rel .pd th { color: var(--indigo); }
+.rel .pd td:first-child { width: 32%; }
+.rel .pd td:nth-child(2) { white-space: nowrap; }
 .rel .rod { margin-top: 26px; font-size: 11px; color: var(--muted); }
 @media print {
   .noprint, .nav { display: none !important; }

@@ -192,7 +192,7 @@ const contar = taps => ({ f: taps.filter(t => t === 'f').length, m: taps.filter(
 function iniciarSalva() {
   if (!token) return;
   if (!S.salva) {
-    S.salva = { id: uuid(), inicio: local(), t0: Date.now(), taps: [], acordou: '' };
+    S.salva = { id: uuid(), inicio: local(), t0: Date.now(), taps: [], tt: [], acordou: '' };
     ls.set('salva', S.salva);
     navigator.vibrate?.(30);
   }
@@ -242,7 +242,7 @@ function fecharSalva() {
 
 function terminarSalva() {
   const s = S.salva, c = contar(s.taps);
-  const e = { id: s.id, inicio: s.inicio, duracao_seg: Math.round((Date.now() - s.t0) / 1000), fortes: c.f, medios: c.m, fracos: c.w, acordou: s.acordou, nota: '', quem: S.hoje?.usuario, video: null };
+  const e = { id: s.id, inicio: s.inicio, duracao_seg: Math.round((Date.now() - s.t0) / 1000), fortes: c.f, medios: c.m, fracos: c.w, toques: s.tt, acordou: s.acordou, nota: '', quem: S.hoje?.usuario, video: null };
   const video = salvaVideo;
   fecharSalva();
   salvarSalvaLocal(e);
@@ -559,11 +559,55 @@ function ntDoseHist(d) {
     <em>${r ? `dada ${hm(r.dada_em)} por ${esc(r.quem)}` : 'sem registro de quem deu'}</em></span><span class="chip ${st[0]}">${st[1]}</span></div>`;
 }
 
+// Padrões (GET /api/resumo → analise): mesmas linhas no app e no PDF. Linha = [o quê, valor, detalhe].
+const num = n => (n == null ? '–' : String(n).replace('.', ','));
+const tempo = m => (m == null ? '–' : m < 60 ? `${m} min` : m < 2880 ? `${Math.floor(m / 60)}h${pad(m % 60)}` : `${num(Math.round(m / 144) / 10)} dias`);
+const segs = s => (s == null ? '–' : s < 60 ? `${num(s)} s` : dur(Math.round(s)));
+function secoesAnalise(a) {
+  const pc = (n, t) => `${Math.round((100 * n) / t)}%`, nome = m => `${m.nome}${m.dose ? ` ${m.dose}` : ''}`;
+  const sv = a.salvas, en = a.entre_salvas, de = a.dentro, h = a.horarios, ac = a.acordou, f = a.falhas;
+  const varia = m => (m.antes.espasmos_dia ? `${m.depois.espasmos_dia > m.antes.espasmos_dia ? '+' : ''}${Math.round((100 * (m.depois.espasmos_dia - m.antes.espasmos_dia)) / m.antes.espasmos_dia)}% · ` : '');
+  return [
+    { t: 'Antes × depois do remédio', sub: 'espasmos por dia', ls: a.remedios.filter(m => m.antes && m.depois).map(m => [nome(m), `${num(m.antes.espasmos_dia)} → ${num(m.depois.espasmos_dia)}`,
+      `${varia(m)}começou ${dm(m.inicio)} · ${num(m.antes.dias)} dias antes × ${num(m.depois.dias)} dias ${m.depois.de === m.inicio ? 'desde o início' : `até ${dm(m.depois.ate)}`}`]) },
+    { t: 'Semana a semana', sub: 'blocos de 7 dias', ls: a.semanas.map(s => [`${dm(s.de)} a ${dm(s.ate)}`, `${num(s.espasmos_dia)}/dia`,
+      `${num(s.salvas_dia)} salvas/dia · ${num(s.espasmos_por_salva)} espasmos por salva${s.fortes_pct == null ? '' : ` · ${s.fortes_pct}% fortes`}`]) },
+    { t: 'Como são as salvas', sub: plural(sv.salvas, 'salva no período', 'salvas no período'), ls: [
+      sv.salvas && ['Espasmos por salva', num(sv.espasmos_por_salva), 'média'],
+      sv.fortes_por_salva != null && ['Fortes por salva', num(sv.fortes_por_salva), `${sv.fortes_pct}% dos espasmos anotados foram fortes`],
+      sv.cronometradas && ['Duração', dur(sv.duracao_media_seg), `média de ${plural(sv.cronometradas, 'salva cronometrada', 'salvas cronometradas')}`]] },
+    { t: 'Tempo entre salvas', sub: 'do fim de uma ao começo da próxima', ls: en.intervalos ? [
+      ['Intervalo típico', tempo(en.mediana_min), `mediana de ${plural(en.intervalos, 'intervalo', 'intervalos')} · média ${tempo(en.media_min)}`],
+      ['Maior período sem crise', tempo(en.maior_min), `${dm(en.maior_desde)} ${hm(en.maior_desde)} a ${dm(en.maior_ate)} ${hm(en.maior_ate)}`]] : [] },
+    { t: 'Dentro da salva', sub: 'tempo entre um espasmo e o próximo', ls: [
+      de.medidas && ['Intervalo médio', segs(de.intervalo_medio_seg), `medido pelo contador em ${plural(de.medidas, 'salva', 'salvas')}`],
+      de.comeco_seg != null && ['Começo → fim da salva', `${segs(de.comeco_seg)} → ${segs(de.fim_seg)}`, 'se aumenta, os espasmos vão espaçando até parar'],
+      de.estimadas && ['Estimado', segs(de.intervalo_estimado_seg), `duração ÷ espasmos em ${plural(de.estimadas, 'salva', 'salvas')} sem contador`]] },
+    { t: 'Quando acontecem', sub: plural(sv.salvas, 'salva', 'salvas'), ls: sv.salvas ? [
+      ['Madrugada', `${h.madrugada} · ${pc(h.madrugada, sv.salvas)}`, '0h às 6h'], ['Manhã', `${h.manha} · ${pc(h.manha, sv.salvas)}`, '6h às 12h'],
+      ['Tarde', `${h.tarde} · ${pc(h.tarde, sv.salvas)}`, '12h às 18h'], ['Noite', `${h.noite} · ${pc(h.noite, sv.salvas)}`, '18h à 0h'],
+      ['Logo depois de acordar', `${ac.logo} · ${pc(ac.logo, sv.salvas)}`, 'acordou agora ou há ~10 min'],
+      ac.dormindo && ['Dormindo', `${ac.dormindo} · ${pc(ac.dormindo, sv.salvas)}`],
+      ac.sem_anotacao && ['Sem anotação de sono', `${ac.sem_anotacao}`]] : [] },
+    { t: 'Relação com a dose', sub: 'salvas logo depois da dose · no meio do intervalo · perto da próxima (sem relação com a dose, ~33% cada)', ls: [
+      ...a.dose.map(d => [nome(d), `${pc(d.logo_depois, d.salvas)} · ${pc(d.meio, d.salvas)} · ${pc(d.perto_da_proxima, d.salvas)}`, plural(d.salvas, 'salva', 'salvas')]),
+      f.dias_com_falha && f.dias_sem_falha && ['Dias com dose atrasada ou sem registro', `${num(f.espasmos_dia_com_falha)} × ${num(f.espasmos_dia_sem_falha)}`,
+        `espasmos/dia: ${plural(f.dias_com_falha, 'dia', 'dias')} com falha × ${plural(f.dias_sem_falha, 'dia', 'dias')} com todas no horário`]] },
+  ].map(s => ({ ...s, ls: s.ls.filter(Boolean) })).filter(s => s.ls.length);
+}
+const cardAnalise = s => `<div class="card"><h3>${s.t}</h3><p class="sub">${s.sub}</p><div class="kv">${s.ls.map(([o, v, d]) =>
+  `<div><span>${esc(o)}${d ? `<small>${esc(d)}</small>` : ''}</span><b>${esc(v)}</b></div>`).join('')}</div></div>`;
+
 function telaHistorico() {
   const r = S.resumo; // mostra o último enquanto o novo período carrega
-  const tabs = `<div class="seg"><button class="${S.aba !== 'doses' ? 'on' : ''}" data-act="aba" data-v="esp">Espasmos</button><button class="${S.aba === 'doses' ? 'on' : ''}" data-act="aba" data-v="doses">Doses</button></div>`;
+  const tabs = `<div class="seg">${[['esp', 'Espasmos'], ['padroes', 'Padrões'], ['doses', 'Doses']].map(([k, t]) => `<button class="${S.aba === k ? 'on' : ''}" data-act="aba" data-v="${k}">${t}</button>`).join('')}</div>`;
   const topo = barra('Histórico', `<button class="sq lbl" data-act="hist">${S.hist} dias</button>`) + tabs;
   if (!r) return topo + '<p class="vazio">Carregando…</p>';
+  if (S.aba === 'padroes') {
+    if (!r.analise) return topo + '<p class="vazio">Carregando…</p>';
+    return topo + `<div class="lista" style="margin-top:18px">${secoesAnalise(r.analise).map(cardAnalise).join('') || '<p class="vazio">Ainda não tem registro suficiente.</p>'}</div>
+      <div class="nota">Calculado com o que vocês registraram nos últimos ${S.hist} dias. O “antes × depois” também olha fora desse período. Quem interpreta é o neuro: leve o relatório em PDF.</div>`;
+  }
   const paineis = cs => `<div class="paineis" id="paineis">${cs.join('')}</div><div class="dots" id="pdots">${cs.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>`;
   if (S.aba === 'doses') {
     const lista = r.doses.filter(d => d.status !== 'pendente' && (!S.soFalhas || d.status === 'atrasada' || d.status === 'dada_atrasada')).reverse().slice(0, 60);
@@ -633,6 +677,8 @@ function telaImprimir() {
     <div class="cab"><div><h1>Luísa <span>· relatório</span></h1><p style="color:var(--muted);font-weight:800;margin-top:4px">${dmy(de)} a ${dmy(ate)} · ${r.dias.length} dias</p></div><img src="/icon.svg" width="54" height="54" alt="" style="border-radius:16px"></div>
     <div class="nums"><div><b>${tot}</b><span>espasmos</span></div><div><b>${(tot / r.dias.length).toFixed(1).replace('.', ',')}</b><span>média por dia</span></div><div><b>${r.salvas.length}</b><span>salvas</span></div><div><b>${dadas}/${prev}</b><span>doses registradas</span></div></div>
     <h2>Espasmos por dia</h2><div class="graf">${linhaDias(r)}</div>
+    ${r.analise ? `<h2>Padrões</h2>${secoesAnalise(r.analise).map(s => `<table class="pd"><tr><th colspan="3">${s.t} · ${s.sub}</th></tr>
+      ${s.ls.map(([o, v, d]) => `<tr><td>${esc(o)}</td><td><b>${esc(v)}</b></td><td>${esc(d || '')}</td></tr>`).join('')}</table>`).join('')}` : ''}
     <h2>Medicação no período</h2>
     <table><tr><th>Remédio</th><th>Dose</th><th>Horários</th><th>Início</th><th>Fim</th><th>Obs.</th></tr>
       ${r.medicacoes.map(m => `<tr><td><b>${esc(m.nome)}</b></td><td>${esc(m.dose)}</td><td>${m.horarios.join(', ')}</td><td>${dmy(m.inicio)}</td><td>${m.fim ? dmy(m.fim) : '–'}</td><td>${esc(m.obs)}</td></tr>`).join('') || '<tr><td colspan="6">Nenhuma</td></tr>'}</table>
@@ -707,11 +753,12 @@ const A = {
   salva: el => abrirSalva(el.dataset.id),
   'salva-nova': () => abrirSalva(null),
   tap(el) {
-    S.salva.taps.push(el.dataset.k); ls.set('salva', S.salva);
+    // tt: segundos desde o início de cada toque, pra medir o tempo entre espasmos (salva aberta antes dessa versão não tem)
+    S.salva.taps.push(el.dataset.k); (S.salva.tt ||= []).push(Math.round((Date.now() - S.salva.t0) / 100) / 10); ls.set('salva', S.salva);
     navigator.vibrate?.(18);
     renderSalva();
   },
-  'sv-undo'() { S.salva.taps.pop(); ls.set('salva', S.salva); renderSalva(); },
+  'sv-undo'() { S.salva.taps.pop(); S.salva.tt?.pop(); ls.set('salva', S.salva); renderSalva(); },
   'sv-acordou'(el) { S.salva.acordou = S.salva.acordou === el.dataset.v ? '' : el.dataset.v; ls.set('salva', S.salva); renderSalva(); },
   'sv-fim': terminarSalva,
   'sv-fechar'() {

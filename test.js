@@ -54,8 +54,19 @@ test('fluxo de doses e espasmos', async t => {
   assert.deepEqual([r.dias[0].espasmos, r.dias[0].salvas, r.dias[0].doses_dadas, r.dias[0].doses_nao_registradas], [10, 1, 1, 1]);
   assert.deepEqual(r.doses.map(x => x.status), ['dada', 'atrasada']);
 
+  // análise: intervalo dentro da salva pelos toques do contador; sem toques, estima duração ÷ (espasmos - 1)
+  assert.equal((await call(lucas, 'POST', '/api/espasmos', { toques: 'x' })).status, 400);
+  await call(lucas, 'POST', '/api/espasmos', { inicio: `${ontem}T15:00`, fortes: 4, duracao_seg: 20, toques: [0, 4, 10, 18] });
+  const a = (await call(lucas, 'GET', `/api/resumo?de=${ontem}&ate=${ontem}`)).body.analise;
+  assert.deepEqual([a.dentro.intervalo_medio_seg, a.dentro.comeco_seg, a.dentro.fim_seg, a.dentro.intervalo_estimado_seg], [6, 4, 8, 16.3]);
+  assert.equal(a.entre_salvas.maior_min, 215, '11:23 + 2:27 de salva até 15:00');
+  assert.equal(a.semanas[0].espasmos_dia, 14);
+  // levetiracetam 07:00 e 13:00: 11:23 cai no último terço do intervalo, 15:00 logo depois da dose das 13:00
+  assert.deepEqual([a.dose[0].logo_depois, a.dose[0].meio, a.dose[0].perto_da_proxima], [1, 0, 1]);
+  assert.deepEqual([a.falhas.dias_com_falha, a.falhas.espasmos_dia_com_falha], [1, 14]);
+
   assert.equal((await call(lucas, 'DELETE', `/api/medicacoes/${med.body.id}`)).status, 409, 'não apaga remédio com doses');
-  assert.equal((await call(lucas, 'GET', '/api/eventos?desde=2000-01-01T00:00')).body.espasmos.length, 1);
+  assert.equal((await call(lucas, 'GET', '/api/eventos?desde=2000-01-01T00:00')).body.espasmos.length, 2);
 
   // ao vivo: o app aberto recebe o aviso quando alguém registra por fora
   const vivo = (await fetch(`${base}/api/ao-vivo?t=${lucas}`)).body.getReader();

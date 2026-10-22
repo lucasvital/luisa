@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS espasmos (
   criado_em TEXT NOT NULL,
   atualizado_em TEXT NOT NULL
 );`);
+// toques: hora de cada espasmo marcado no contador (JSON, segundos desde o início da salva). Coluna nova em banco antigo.
+if (!db.prepare('PRAGMA table_info(espasmos)').all().some(c => c.name === 'toques')) db.exec('ALTER TABLE espasmos ADD COLUMN toques TEXT');
 
 // Um token por pessoa (USUARIOS=Lucas,Mãe,Agente). Nome novo na lista ganha token no próximo boot.
 // A Alexa saiu do app: o token dela (que ficou no console da Amazon) deixa de valer. Os registros dela continuam.
@@ -139,6 +141,97 @@ function casarSlot(med, dadaEm) {
     .filter(s => s.medicacao_id === med.id && Math.abs(minutos(dadaEm, s.previsto)) <= JANELA_MIN)
     .sort((a, b) => Math.abs(minutos(dadaEm, a.previsto)) - Math.abs(minutos(dadaEm, b.previsto)));
   return cands[0]?.previsto || null;
+}
+
+// ---------- análise: padrões pra levar ao neuro (vai em GET /api/resumo → analise) ----------
+const media = xs => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+const mediana = xs => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return !s.length ? null : s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const r0 = n => (n == null ? null : Math.round(n));
+const r1 = n => (n == null ? null : Math.round(n * 10) / 10);
+const pct = (a, b) => (b ? Math.round((100 * a) / b) : null);
+// dias entre de e ate (inclusive); hoje conta só o que já passou, senão a média de hoje sai baixa
+const diasDecorridos = (de, ate) => (Math.min(Date.now(), new Date(addDias(ate, 1) + 'T00:00:00')) - new Date(de + 'T00:00:00')) / 864e5;
+
+// espasmos/dia num intervalo, contando só a partir do primeiro registro (antes disso o app não era usado)
+function porDia(de, ate, primeiro) {
+  if (de < primeiro) de = primeiro;
+  const dias = de <= ate ? diasDecorridos(de, ate) : 0;
+  if (dias <= 0) return null;
+  const { n, t } = db.prepare('SELECT count(*) AS n, coalesce(sum(total), 0) AS t FROM espasmos WHERE substr(inicio, 1, 10) BETWEEN ? AND ?').get(de, ate);
+  return { de, ate, dias: r1(dias), espasmos_dia: r1(t / dias), salvas_dia: r1(n / dias) };
+}
+
+function analise({ de, ate, dias, salvas, medicacoes }) {
+  const primeiro = db.prepare('SELECT min(d) AS d FROM (SELECT min(substr(inicio, 1, 10)) AS d FROM espasmos UNION ALL SELECT min(substr(dada_em, 1, 10)) FROM doses)').get().d || de;
+  const soma = (xs, f) => xs.reduce((t, x) => t + f(x), 0);
+  const toques = s => JSON.parse(s.toques || '[]');
+
+  // 7 dias antes de cada remédio (ou mudança de dose) começar × os 7 dias mais recentes dele
+  const remedios = medicacoes.filter(m => m.inicio <= ate).map(m => {
+    const fim = m.fim && m.fim < ate ? m.fim : ate, ult7 = addDias(fim, -6);
+    return { nome: m.nome, dose: m.dose, inicio: m.inicio, fim: m.fim, antes: porDia(addDias(m.inicio, -7), addDias(m.inicio, -1), primeiro), depois: porDia(m.inicio > ult7 ? m.inicio : ult7, fim, primeiro) };
+  });
+
+  // semana a semana: blocos de 7 dias contados de trás pra frente a partir de "ate"
+  const validos = dias.filter(d => d.dia >= primeiro && d.dia <= hoje()), semanas = [];
+  for (let i = validos.length; i > 0; i -= 7) {
+    const b = validos.slice(Math.max(0, i - 7), i), n = diasDecorridos(b[0].dia, b.at(-1).dia);
+    const esp = soma(b, d => d.espasmos), sv = soma(b, d => d.salvas);
+    semanas.unshift({ de: b[0].dia, ate: b.at(-1).dia, dias: r1(n), espasmos_dia: r1(esp / n), salvas_dia: r1(sv / n), espasmos_por_salva: sv ? r1(esp / sv) : null, fortes_pct: pct(soma(b, d => d.fortes), soma(b, d => d.fortes + d.medios + d.fracos)) });
+  }
+
+  const anot = salvas.filter(s => s.fortes + s.medios + s.fracos), durs = salvas.filter(s => s.duracao_seg != null).map(s => s.duracao_seg);
+  const perfil = {
+    salvas: salvas.length, espasmos_por_salva: r1(media(salvas.map(s => s.total))),
+    fortes_por_salva: r1(media(anot.map(s => s.fortes))), fortes_pct: pct(soma(anot, s => s.fortes), soma(anot, s => s.fortes + s.medios + s.fracos)),
+    duracao_media_seg: r0(media(durs)), cronometradas: durs.length,
+  };
+
+  // do fim de uma salva ao começo da próxima
+  const gaps = salvas.slice(1).map((s, i) => ({ min: minutos(s.inicio, salvas[i].inicio) - (salvas[i].duracao_seg || 0) / 60, ate: s.inicio })).filter(g => g.min >= 0);
+  const maior = gaps.reduce((a, g) => (!a || g.min > a.min ? g : a), null);
+  const entre_salvas = {
+    intervalos: gaps.length, mediana_min: r0(mediana(gaps.map(g => g.min))), media_min: r0(media(gaps.map(g => g.min))),
+    maior_min: r0(maior?.min), maior_desde: maior && local(new Date(new Date(maior.ate) - maior.min * 60000)), maior_ate: maior?.ate || null,
+  };
+
+  // dentro da salva: tempo entre um espasmo e o próximo, pelos toques do contador do app.
+  // Sem toques (atalho, registro manual), estima duração ÷ (espasmos - 1).
+  const ivs = salvas.map(toques).filter(t => t.length > 1).map(t => t.slice(1).map((x, i) => x - t[i]));
+  const estimados = salvas.filter(s => toques(s).length < 2 && s.total > 1 && s.duracao_seg).map(s => s.duracao_seg / (s.total - 1));
+  const dentro = {
+    medidas: ivs.length, intervalo_medio_seg: r1(media(ivs.flat())), intervalo_mediano_seg: r1(mediana(ivs.flat())),
+    // primeira × segunda metade de cada salva: se cresce, os espasmos vão espaçando até parar
+    comeco_seg: r1(media(ivs.flatMap(v => v.slice(0, v.length >> 1)))), fim_seg: r1(media(ivs.flatMap(v => v.slice((v.length + 1) >> 1)))),
+    estimadas: estimados.length, intervalo_estimado_seg: r1(media(estimados)),
+  };
+
+  const conta = (ks, f) => salvas.reduce((o, s) => (o[f(s)]++, o), Object.fromEntries(ks.map(k => [k, 0])));
+  const PER = ['madrugada', 'manha', 'tarde', 'noite'];
+  const horarios = conta(PER, s => PER[Math.floor(s.inicio.slice(11, 13) / 6)]);
+  const acordou = conta(['logo', 'mais_tarde', 'dormindo', 'sem_anotacao'], s => (!s.acordou ? 'sem_anotacao' : s.acordou === 'dormindo' ? 'dormindo' : ['agora', '~10 min'].includes(s.acordou) ? 'logo' : 'mais_tarde'));
+
+  // Em que terço do intervalo entre duas doses do remédio a salva começou. Se o efeito acaba antes da
+  // próxima dose, as salvas se juntam no último terço; sem relação com a dose, ~1/3 em cada.
+  // ponytail: usa o horário previsto, não a hora em que foi dada; trocar por dada_em se os atrasos forem grandes
+  const cache = new Map(), slotsDe = d => cache.get(d) || cache.set(d, slots(d)).get(d);
+  const dose = medicacoes.map(m => {
+    const t = [0, 0, 0];
+    for (const s of salvas) {
+      const d = s.inicio.slice(0, 10);
+      const hs = [addDias(d, -1), d, addDias(d, 1)].flatMap(slotsDe).filter(x => x.medicacao_id === m.id).map(x => x.previsto + ':00');
+      const ant = hs.findLast(h => h <= s.inicio), prox = hs.find(h => h > s.inicio);
+      if (ant && prox) t[Math.min(2, Math.floor((3 * minutos(s.inicio, ant)) / minutos(prox, ant)))]++;
+    }
+    return { nome: m.nome, dose: m.dose, inicio: m.inicio, salvas: t[0] + t[1] + t[2], logo_depois: t[0], meio: t[1], perto_da_proxima: t[2] };
+  }).filter(x => x.salvas);
+
+  // dias com dose atrasada ou sem registro × dias com todas no horário (hoje fica de fora: ainda não acabou)
+  const fechados = validos.filter(d => d.dia < hoje() && d.doses_previstas), falhou = d => d.doses_atrasadas + d.doses_nao_registradas > 0;
+  const com = fechados.filter(falhou), sem = fechados.filter(d => !falhou(d));
+  const falhas = { dias_com_falha: com.length, espasmos_dia_com_falha: r1(media(com.map(d => d.espasmos))), dias_sem_falha: sem.length, espasmos_dia_sem_falha: r1(media(sem.map(d => d.espasmos))) };
+
+  return { primeiro_registro: primeiro, remedios, semanas, salvas: perfil, entre_salvas, dentro, horarios, acordou, dose, falhas };
 }
 
 // ---------- avisos: app aberto (ao vivo) + webhook opcional pro agente ----------
@@ -265,6 +358,9 @@ const rotas = {
     const cur = b.id && getEspasmo(b.id);
     const v = (k, def) => (b[k] !== undefined ? b[k] : cur ? cur[k] : def);
     const fortes = int(v('fortes', 0), 'fortes'), medios = int(v('medios', 0), 'medios'), fracos = int(v('fracos', 0), 'fracos');
+    if (b.toques != null && !(Array.isArray(b.toques) && b.toques.length <= 2000 && b.toques.every(n => typeof n === 'number' && n >= 0 && n < 86400))) {
+      throw erro(400, 'toques deve ser a lista de segundos desde o início da salva em que cada espasmo aconteceu, ex.: [0, 4.2, 9]');
+    }
     const e = {
       id: b.id || crypto.randomUUID(),
       inicio: toLocal(b.inicio ?? b.hora, 'inicio') || cur?.inicio || local(),
@@ -272,11 +368,12 @@ const rotas = {
       fortes, medios, fracos,
       total: fortes + medios + fracos || int(v('total', 1), 'total'),
       acordou: v('acordou', ''), nota: v('nota', ''), video: cur?.video || null,
+      toques: b.toques === undefined ? cur?.toques ?? null : b.toques && JSON.stringify(b.toques),
       quem: cur?.quem || b.quem || u.nome, criado_em: cur?.criado_em || local(), atualizado_em: local(),
     };
-    db.prepare(`INSERT INTO espasmos (id, inicio, duracao_seg, fortes, medios, fracos, total, acordou, nota, video, quem, criado_em, atualizado_em)
-      VALUES (:id, :inicio, :duracao_seg, :fortes, :medios, :fracos, :total, :acordou, :nota, :video, :quem, :criado_em, :atualizado_em)
-      ON CONFLICT(id) DO UPDATE SET inicio=:inicio, duracao_seg=:duracao_seg, fortes=:fortes, medios=:medios, fracos=:fracos, total=:total, acordou=:acordou, nota=:nota, atualizado_em=:atualizado_em`).run(e);
+    db.prepare(`INSERT INTO espasmos (id, inicio, duracao_seg, fortes, medios, fracos, total, acordou, nota, video, toques, quem, criado_em, atualizado_em)
+      VALUES (:id, :inicio, :duracao_seg, :fortes, :medios, :fracos, :total, :acordou, :nota, :video, :toques, :quem, :criado_em, :atualizado_em)
+      ON CONFLICT(id) DO UPDATE SET inicio=:inicio, duracao_seg=:duracao_seg, fortes=:fortes, medios=:medios, fracos=:fracos, total=:total, acordou=:acordou, nota=:nota, toques=:toques, atualizado_em=:atualizado_em`).run(e);
     avisar('espasmo', cur ? 'atualizado' : 'criado', e);
     return R(cur ? 200 : 201, e);
   },
@@ -309,7 +406,7 @@ const rotas = {
       });
     }
     const medicacoes = db.prepare("SELECT * FROM medicacoes WHERE inicio <= ? AND (fim IS NULL OR fim = '' OR fim >= ?) ORDER BY inicio").all(ate, de).map(parseMed);
-    return { de, ate, dias, salvas, doses, medicacoes };
+    return { de, ate, dias, salvas, doses, medicacoes, analise: analise({ de, ate, dias, salvas, medicacoes }) };
   },
 
   // Atalhos do iPhone (Toque Traseiro / Siri): POST /api/atalho/espasmo e /api/atalho/dei.
