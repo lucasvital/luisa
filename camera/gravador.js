@@ -24,8 +24,12 @@ const log = msg => console.log(`${local().replace('T', ' ')}  ${msg}`);
 const inicioDoArquivo = f => new Date(f.slice(0, 19).replace(/T(\d\d)-(\d\d)-(\d\d)/, 'T$1:$2:$3')).getTime();
 
 function ffmpeg(args) {
-  return new Promise((ok, falha) => spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args], { stdio: 'inherit' })
-    .on('error', falha).on('exit', c => (c ? falha(new Error(`ffmpeg saiu com ${c}`)) : ok())));
+  return new Promise((ok, falha) => {
+    const p = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args], { stdio: ['ignore', 'inherit', 'pipe'] });
+    // o erro do ffmpeg repete o endereço da câmera, que tem a senha
+    p.stderr.on('data', b => process.stderr.write(String(b).split(CAMERA_URL).join('rtsp://***@camera')));
+    p.on('error', falha).on('exit', c => (c ? falha(new Error(`ffmpeg saiu com ${c}`)) : ok()));
+  });
 }
 
 // Vídeo copiado sem recodificar (CPU quase zero), em pedaços de 10 s. Áudio vira AAC: o da Tapo (G.711) não cabe em MP4.

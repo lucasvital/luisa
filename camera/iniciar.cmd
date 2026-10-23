@@ -1,4 +1,4 @@
 @echo off
-rem Inicia a gravacao da camera do berco. Para abrir junto com o Windows, coloque um atalho deste arquivo em shell:startup
-node --env-file="%~dp0.env" "%~dp0gravador.js"
-pause
+rem Roda o gravador da camera; a saida vai para gravador.log. ligar-com-windows.ps1 faz ele abrir sozinho com o Windows, sem janela.
+cd /d "%~dp0"
+node --env-file=.env gravador.js >> gravador.log 2>&1

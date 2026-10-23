@@ -46,7 +46,15 @@ O passo a passo, as respostas e a solução de problemas estão em **[docs/iphon
 
 1. No app Tapo: câmera → Configurações → Configurações avançadas → **Conta da câmera**. Crie um usuário e uma senha só com letras e números. O IP aparece em Configurações → Informações do dispositivo.
 2. Preencha `camera/.env` (não vai pro GitHub): `CAMERA_URL=rtsp://usuario:senha@IP:554/stream1` e `CODIGO=` com o código de acesso do app (o curto de `PINS` ou o longo do link).
-3. Dê dois cliques em `camera/iniciar.cmd`. Para abrir junto com o Windows, coloque um atalho dele em `shell:startup`. O PC não pode entrar em suspensão.
+3. Rode uma vez `powershell -ExecutionPolicy Bypass -File camera\ligar-com-windows.ps1`. Ele cria uma tarefa no Windows que abre o gravador sem janela quando você entra no Windows e religa em até 5 min se ele parar. A saída vai para `camera/gravador.log`. O PC não pode entrar em suspensão.
+
+## Telinha da casa (ESP32 + OLED)
+
+`tela/tela.ino` mostra no OLED 0,96" a próxima dose, a última dose dada e os espasmos de hoje, trocando a cada 4 s. Ele lê `GET /api/hoje` a cada 30 s. Se tiver uma dose atrasada, a tela pisca nela. Das 22h às 7h o brilho fica no mínimo.
+
+- **Ligação:** GND→GND, VCC→3V3, SCL→D22, SDA→D21.
+- **`tela/segredos.h`** (não vai pro GitHub): `WIFI_NOME`, `WIFI_SENHA` e `CODIGO`, que é o código curto de `PINS`.
+- **Gravar:** placa `esp32:esp32:esp32`, bibliotecas U8g2 e ArduinoJson.
 
 ## API (para a agente)
 

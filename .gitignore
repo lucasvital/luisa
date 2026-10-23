@@ -2,3 +2,5 @@ data/
 .superpowers/
 camera/.env
 camera/gravacao/
+camera/gravador.log
+tela/segredos.h
