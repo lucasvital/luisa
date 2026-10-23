@@ -39,6 +39,14 @@ O app precisa de HTTPS para instalar no celular e funcionar offline. Coloque atr
 
 O passo a passo, as respostas e a solução de problemas estão em **[docs/iphone-atalhos.md](docs/iphone-atalhos.md)**. Esse guia foi escrito para a agente conseguir ajudar na configuração.
 
+## Câmera do berço (vídeo automático da salva)
+
+`camera/gravador.js` roda num PC de casa que fica ligado e precisa do ffmpeg. Ele grava a câmera sem parar e guarda só as últimas 2 horas. Quando uma salva é registrada (pelo app, pelo atalho ou pela agente), ele corta o trecho de 30 s antes do início até 30 s depois do fim e anexa na salva. Salva sem duração leva 5 minutos de vídeo.
+
+1. No app Tapo: câmera → Configurações → Configurações avançadas → **Conta da câmera**. Crie um usuário e uma senha só com letras e números. O IP aparece em Configurações → Informações do dispositivo.
+2. Preencha `camera/.env` (não vai pro GitHub): `CAMERA_URL=rtsp://usuario:senha@IP:554/stream1` e `TOKEN=` com o código de acesso do app.
+3. Dê dois cliques em `camera/iniciar.cmd`. Para abrir junto com o Windows, coloque um atalho dele em `shell:startup`. O PC não pode entrar em suspensão.
+
 ## API (para a agente)
 
 Todas as chamadas levam `Authorization: Bearer <token da Agente>`. As horas aceitam `13:00` (hoje), `2026-10-21T13:00` (hora local) ou ISO com fuso. As respostas usam hora local, sem fuso.
