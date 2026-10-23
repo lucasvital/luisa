@@ -7,6 +7,7 @@ const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'luisa-'));
 process.env.USUARIOS = 'Lucas,Mãe';
+process.env.PINS = 'Mãe:4321';
 const { server, db } = require('./server');
 
 test('fluxo de doses e espasmos', async t => {
@@ -80,4 +81,11 @@ test('fluxo de doses e espasmos', async t => {
   assert.match(await atalho('espasmo'), /^Salva iniciada/);
   assert.match(await atalho('espasmo'), /^Salva encerrada: 0:0\d/);
   assert.match(await atalho('dei'), /dose|dada/i);
+
+  // código curto: só troca pelo token; 10 erros bloqueiam
+  const entrar = async codigo => fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ codigo }) });
+  assert.equal((await (await entrar('4321')).json()).token, mae);
+  assert.equal((await call('4321', 'GET', '/api/hoje')).status, 401, 'o código curto não vale como token');
+  for (let i = 0; i < 10; i++) assert.equal((await entrar('0000')).status, 401);
+  assert.equal((await entrar('4321')).status, 429);
 });

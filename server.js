@@ -63,6 +63,10 @@ const insUsuario = db.prepare('INSERT INTO usuarios (token, nome) SELECT ?, ? WH
 for (const nome of (process.env.USUARIOS || 'Lucas,Mãe,Agente').split(',').map(n => n.trim()).filter(Boolean)) {
   insUsuario.run(crypto.randomBytes(18).toString('base64url'), nome, nome);
 }
+// Código curto pra entrar (PINS=Lucas:281200,Mãe:1234): POST /api/entrar troca pelo token da pessoa.
+// Só serve pra entrar; a API continua exigindo o token. 10 erros em 15 min bloqueiam o código pra todo mundo (contra chute).
+const pins = new Map((process.env.PINS || '').split(',').map(p => p.split(':').map(s => s.trim())).filter(([n, c]) => n && c).map(([n, c]) => [c, n]));
+let errosPin = [];
 
 // ---------- tempo: tudo gravado em hora local sem fuso ("2026-10-21T11:23:00") ----------
 const pad = n => String(n).padStart(2, '0');
@@ -467,6 +471,15 @@ const server = http.createServer(async (req, res) => {
       const file = path.join(PUB, p === '/' ? 'index.html' : path.normalize(p));
       if (!file.startsWith(PUB)) return enviarJson(res, 404, { erro: 'não encontrado' });
       return enviarArquivo(req, res, file, /\.(png|svg)$/.test(file) ? 'max-age=86400' : 'no-cache');
+    }
+
+    if (p === '/api/entrar' && req.method === 'POST') {
+      errosPin = errosPin.filter(t => t > Date.now() - 15 * 60000);
+      if (errosPin.length >= 10) throw erro(429, 'muitas tentativas erradas: espere 15 minutos');
+      const nome = pins.get(String((await lerJson(req)).codigo ?? '').trim());
+      const u = nome && db.prepare('SELECT * FROM usuarios WHERE nome = ?').get(nome);
+      if (!u) { errosPin.push(Date.now()); throw erro(401, 'código errado'); }
+      return enviarJson(res, 200, { nome: u.nome, token: u.token });
     }
 
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || url.searchParams.get('t');

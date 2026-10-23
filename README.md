@@ -17,6 +17,7 @@ No primeiro boot, o servidor cria um token por pessoa e mostra os links de acess
 | `PORT` | `3000` | |
 | `DATA_DIR` | `./data` | banco (`luisa.db`) e vídeos |
 | `USUARIOS` | `Lucas,Mãe,Agente` | um token por nome; nome novo na lista ganha token no próximo boot |
+| `PINS` | (vazio) | código curto para entrar no app, ex. `Lucas:281200,Mãe:4321`. Só troca pelo token da pessoa; 10 erros em 15 min bloqueiam o código por 15 min |
 | `TZ` | `America/Sao_Paulo` | todas as horas são gravadas no horário local |
 | `WEBHOOK_URL` | (vazio) | se definido, recebe um POST a cada registro |
 | `WEBHOOK_TOKEN` | (vazio) | vai como `Authorization: Bearer` no webhook |
@@ -44,7 +45,7 @@ O passo a passo, as respostas e a solução de problemas estão em **[docs/iphon
 `camera/gravador.js` roda num PC de casa que fica ligado e precisa do ffmpeg. Ele grava a câmera sem parar e guarda só as últimas 2 horas. Quando uma salva é registrada (pelo app, pelo atalho ou pela agente), ele corta o trecho de 30 s antes do início até 30 s depois do fim e anexa na salva. Salva sem duração leva 5 minutos de vídeo.
 
 1. No app Tapo: câmera → Configurações → Configurações avançadas → **Conta da câmera**. Crie um usuário e uma senha só com letras e números. O IP aparece em Configurações → Informações do dispositivo.
-2. Preencha `camera/.env` (não vai pro GitHub): `CAMERA_URL=rtsp://usuario:senha@IP:554/stream1` e `TOKEN=` com o código de acesso do app.
+2. Preencha `camera/.env` (não vai pro GitHub): `CAMERA_URL=rtsp://usuario:senha@IP:554/stream1` e `CODIGO=` com o código de acesso do app (o curto de `PINS` ou o longo do link).
 3. Dê dois cliques em `camera/iniciar.cmd`. Para abrir junto com o Windows, coloque um atalho dele em `shell:startup`. O PC não pode entrar em suspensão.
 
 ## API (para a agente)

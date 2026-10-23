@@ -696,8 +696,8 @@ function telaImprimir() {
 
 function telaLogin() {
   return `<div class="login"><img src="/icon.svg" alt=""><h1>Doses e espasmos<br>da Luísa</h1>
-    <p>Abra o seu link pessoal de acesso (ele aparece no terminal quando o servidor inicia), ou cole aqui:</p>
-    <input class="in" id="tk" placeholder="link ou código de acesso" autocomplete="off">
+    <p>Digite o seu código de acesso ou cole o seu link pessoal:</p>
+    <input class="in" id="tk" placeholder="código ou link de acesso" autocomplete="off">
     <button class="btn y" data-act="entrar">Entrar</button></div>`;
 }
 
@@ -844,8 +844,15 @@ const A = {
   sair,
   async entrar() {
     const v = $('#tk').value.trim();
-    token = (v.match(/[?&]t=([^&#\s]+)/) || [, v])[1];
-    try { await api('GET', '/api/eu'); ls.set('token', token); carregar(); ouvirAoVivo(); }
+    try {
+      if (/^\d{4,8}$/.test(v)) { // código curto (PINS no servidor) vira o token da pessoa
+        const r = await fetch('/api/entrar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codigo: v }) });
+        const d = await r.json();
+        if (!r.ok) return toast(d.erro, { erro: true });
+        token = d.token;
+      } else token = (v.match(/[?&]t=([^&#\s]+)/) || [, v])[1];
+      await api('GET', '/api/eu'); ls.set('token', token); carregar(); ouvirAoVivo();
+    }
     catch (e) { token = ''; toast(e.status ? 'Esse acesso não vale' : 'Sem conexão com o servidor', { erro: true }); }
   },
 };

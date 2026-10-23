@@ -2,14 +2,15 @@
 // Roda num PC de casa ligado, com ffmpeg instalado:  node --env-file=camera/.env camera/gravador.js
 // camera/.env:
 //   CAMERA_URL=rtsp://usuario:senha@192.168.18.x:554/stream1   (Tapo: "Conta da câmera" no app; stream2 = qualidade menor)
-//   TOKEN=código do link do app (o que vem depois de ?t=)
+//   CODIGO=código de acesso do app (o curto, ex. 281200, ou o longo do link, o que vem depois de ?t=)
 //   APP_URL=https://c.devital.com.br
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { CAMERA_URL, TOKEN, APP_URL = 'https://c.devital.com.br' } = process.env;
-if (!CAMERA_URL || !TOKEN) { console.error('Preencha CAMERA_URL e TOKEN em camera/.env'); process.exit(1); }
+const { CAMERA_URL, CODIGO, APP_URL = 'https://c.devital.com.br' } = process.env;
+if (!CAMERA_URL || !CODIGO) { console.error('Preencha CAMERA_URL e CODIGO em camera/.env'); process.exit(1); }
+let TOKEN = CODIGO;
 const GUARDAR_MIN = +(process.env.GUARDAR_MIN || 120); // quanto vídeo fica no PC (~1 GB por hora em 1080p)
 const MARGEM = +(process.env.MARGEM_SEG || 30) * 1000; // antes do início e depois do fim da salva
 const SEM_DURACAO = 5 * 60000; // salva registrada sem duração (agente, atalho sem o 2º toque)
@@ -86,4 +87,14 @@ async function verSalvas() {
 
 gravar();
 setInterval(limpar, 60000);
-(async () => { for (;;) { await verSalvas(); await new Promise(ok => setTimeout(ok, 15000)); } })();
+(async () => {
+  while (/^\d{4,8}$/.test(TOKEN)) { // código curto: troca pelo token, como o app faz no login
+    const r = await fetch(`${APP_URL}/api/entrar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codigo: CODIGO }) })
+      .then(async r => ({ status: r.status, ...(await r.json()) })).catch(e => ({ erro: e.message }));
+    if (r.token) TOKEN = r.token;
+    // código recusado: para, porque insistir bloqueia o código pra todo mundo
+    else if (r.status) { log(`o app recusou o CODIGO: ${r.erro}`); process.exit(1); }
+    else { log(`sem conexão com o app (${r.erro}), tentando de novo em 1 min`); await new Promise(ok => setTimeout(ok, 60000)); }
+  }
+  for (;;) { await verSalvas(); await new Promise(ok => setTimeout(ok, 15000)); }
+})();
