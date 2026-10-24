@@ -56,6 +56,32 @@ O passo a passo, as respostas e a solução de problemas estão em **[docs/iphon
 - **`tela/segredos.h`** (não vai pro GitHub): `WIFI_NOME`, `WIFI_SENHA` e `CODIGO`, que é o código curto de `PINS`.
 - **Gravar:** placa `esp32:esp32:esp32`, bibliotecas U8g2 e ArduinoJson.
 
+### Case com bateria
+
+`node tela/case/case.js` gera `frente.stl`, `divisoria.stl`, `tampa.stl` e `montagem.png`, que serve para conferir. As medidas das placas e as folgas ficam no começo do arquivo. Fechada, a caixa mede 38,6 × 57,6 × 36,3 mm. Cada peça já sai deitada do jeito de imprimir, sem suporte.
+
+**Peças:**
+- Bateria LiPo 103450 (2000 mAh).
+- Carregador TP4056 USB-C com proteção.
+- Step-up MT3608.
+- Chave SS12D00.
+
+**Ligação:**
+- Bateria → B+ e B− do TP4056.
+- OUT+ do TP4056 → chave → IN+ do MT3608.
+- OUT− do TP4056 → IN− do MT3608.
+- OUT+ do MT3608 → VIN do ESP32.
+- OUT− do MT3608 → GND do ESP32.
+
+O regulador do ESP32 não funciona direto na bateria de 3,7 V, por isso entra o step-up. **Antes de ligar no ESP32, regule o MT3608 para 5,0 V** com o multímetro.
+
+**Montagem:** solde e teste tudo fora da caixa antes de montar.
+1. Corte os pinos da tela rente ao plástico preto e solde os fios ali. Os fios passam para trás do ESP32 pelo vão de cima, do lado direito (olhando de frente).
+2. Cole com cola quente a tela, o carregador (com o USB-C no furo) e a chave.
+3. O ESP32 entra por trás, com as peças viradas para a tela e o micro-USB no furo de baixo, até encostar no degrau.
+4. Cole o MT3608 com fita dupla-face na divisória, no lado da frente, entre as fileiras de pinos.
+5. Coloque a divisória (os fios da bateria passam pelo canto de baixo), depois a bateria e a tampa.
+
 ## API (para a agente)
 
 Todas as chamadas levam `Authorization: Bearer <token da Agente>`. As horas aceitam `13:00` (hoje), `2026-10-21T13:00` (hora local) ou ISO com fuso. As respostas usam hora local, sem fuso.

@@ -4,3 +4,5 @@ camera/.env
 camera/gravacao/
 camera/gravador.log
 tela/segredos.h
+tela/case/*.stl
+tela/case/*.png
