@@ -1,5 +1,5 @@
 // Telinha da Luísa: ESP32 + OLED 0,96" (SSD1306, I2C) mostrando a próxima dose, a última e os espasmos de hoje.
-// Lê GET /api/hoje a cada 30 s. Dose atrasada faz a tela piscar. De 22h às 7h o brilho cai.
+// Lê GET /api/hoje a cada 30 s e na hora de cada registro (escuta /api/ao-vivo). Dose atrasada faz a tela piscar. De 22h às 7h o brilho cai.
 // Ligação: GND→GND, VCC→3V3, SCL→D22, SDA→D21.
 // segredos.h (não vai pro GitHub):  #define WIFI_NOME "..."   #define WIFI_SENHA "..."   #define CODIGO "281200"
 // Bibliotecas: U8g2 e ArduinoJson. Placa: esp32:esp32:esp32.
@@ -11,11 +11,12 @@
 #include "segredos.h"
 #include "raizes.h"
 
-const char* APP = "https://c.devital.com.br";
+#define HOST "c.devital.com.br"
+const char* APP = "https://" HOST;
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C tela(U8G2_R0, U8X8_PIN_NONE);
-WiFiClientSecure tls;
+WiFiClientSecure tls, vivo; // vivo: fica aberta em /api/ao-vivo pra saber na hora de um registro novo
 String token, erro = "Conectando no Wi-Fi…";
-unsigned long lidoEm, proximaLeitura;
+unsigned long lidoEm, proximaLeitura, vivoTentou, vivoOuviu;
 
 struct {
   bool ok;
@@ -102,7 +103,24 @@ void atualizar() {
   int c = ler();
   if (c == 401) token = "";
   erro = c == 200 ? "" : "Sem conexão com o app";
-  Serial.printf("leitura: %d  espasmos hoje: %d  próxima: %s %s\n", c, d.espasmos, d.proxNome.c_str(), d.proxPrevisto.c_str());
+  Serial.printf("leitura: %d  espasmos hoje: %d  próxima: %s %s  memória livre: %u\n", c, d.espasmos, d.proxNome.c_str(), d.proxPrevisto.c_str(), ESP.getFreeHeap());
+}
+
+// registro novo (app, atalho, agente) chega aqui na hora e a tela relê sem esperar os 30 s
+void escutar() {
+  if (vivo.connected()) {
+    while (vivo.available()) {
+      String l = vivo.readStringUntil('\n');
+      vivoOuviu = millis();
+      if (l.startsWith("data:")) proximaLeitura = millis();
+      else if (l.startsWith("HTTP/") && l.indexOf(" 200") < 0) vivo.stop(); // token vencido: o ler() pega o 401
+    }
+    // o servidor manda ping a cada 25 s; silêncio = conexão morta (Wi-Fi caiu no meio)
+    if (millis() - vivoOuviu > 60000) vivo.stop();
+  } else if (token != "" && WiFi.status() == WL_CONNECTED && millis() - vivoTentou > 30000) {
+    vivoTentou = vivoOuviu = millis();
+    if (vivo.connect(HOST, 443)) vivo.print(String("GET /api/ao-vivo HTTP/1.1\r\nHost: " HOST "\r\nAuthorization: Bearer ") + token + "\r\n\r\n");
+  }
 }
 
 // ---------- tela: faixa amarela em cima (16 px), azul embaixo ----------
@@ -164,11 +182,14 @@ void setup() {
   tela.begin();
   tela.enableUTF8Print();
   tls.setCACert(RAIZES);
+  vivo.setCACert(RAIZES);
+  vivo.setHandshakeTimeout(10); // padrão é 120 s, travaria a tela se a rede engasgar
   WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_NOME, WIFI_SENHA);
 }
 
 void loop() {
+  escutar();
   if ((long)(millis() - proximaLeitura) >= 0) atualizar();
   desenhar();
   delay(100);

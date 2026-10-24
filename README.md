@@ -50,7 +50,7 @@ O passo a passo, as respostas e a solução de problemas estão em **[docs/iphon
 
 ## Telinha da casa (ESP32 + OLED)
 
-`tela/tela.ino` mostra no OLED 0,96" a próxima dose, a última dose dada e os espasmos de hoje, trocando a cada 4 s. Ele lê `GET /api/hoje` a cada 30 s. Se tiver uma dose atrasada, a tela pisca nela. Das 22h às 7h o brilho fica no mínimo.
+`tela/tela.ino` mostra no OLED 0,96" a próxima dose, a última dose dada e os espasmos de hoje, trocando a cada 4 s. Ele lê `GET /api/hoje` a cada 30 s e também na hora de cada registro, porque fica escutando `/api/ao-vivo`. Se tiver uma dose atrasada, a tela pisca nela. Das 22h às 7h o brilho fica no mínimo.
 
 - **Ligação:** GND→GND, VCC→3V3, SCL→D22, SDA→D21.
 - **`tela/segredos.h`** (não vai pro GitHub): `WIFI_NOME`, `WIFI_SENHA` e `CODIGO`, que é o código curto de `PINS`.
